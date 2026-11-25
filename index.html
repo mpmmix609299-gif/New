@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>چت سه نفره</title>
+<style>
+  * { box-sizing: border-box; font-family: Tahoma, sans-serif; }
+  body { margin: 0; height: 100vh; display: flex; justify-content: center; align-items: center; background: linear-gradient(135deg, #667eea, #764ba2); }
+  .screen { background: #fff; border-radius: 16px; padding: 24px; width: 340px; box-shadow: 0 10px 30px rgba(0,0,0,.3); }
+  .hidden { display: none; }
+  h2 { text-align: center; margin-top: 0; color: #333; }
+  input { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ccc; border-radius: 8px; font-size: 14px; }
+  button { width: 100%; padding: 12px; margin-top: 8px; background: #667eea; color: #fff; border: none; border-radius: 8px; font-size: 15px; cursor: pointer; }
+  #error { color: #e74c3c; font-size: 13px; text-align: center; margin-top: 8px; }
+  
+  #chatScreen { display: flex; flex-direction: column; width: 100%; max-width: 480px; height: 100vh; background: #fff; }
+  #header { background: #667eea; color: #fff; padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; font-weight: bold; }
+  #logout { background: rgba(255,255,255,.25); width: auto; padding: 6px 12px; margin: 0; font-size: 13px; }
+  #messages { flex: 1; overflow-y: auto; padding: 16px; background: #f5f6fa; display: flex; flex-direction: column; gap: 8px; }
+  .msg { max-width: 75%; padding: 10px 14px; border-radius: 12px; font-size: 14px; word-wrap: break-word; }
+  .mine { align-self: flex-start; background: #667eea; color: #fff; border-bottom-right-radius: 4px; }
+  .theirs { align-self: flex-end; background: #e4e6eb; color: #333; border-bottom-left-radius: 4px; }
+  .sender-name { font-size: 11px; opacity: .7; margin-bottom: 3px; }
+  #inputArea { display: flex; padding: 12px; gap: 8px; border-top: 1px solid #eee; background: #fff; }
+  #msgInput { flex: 1; margin: 0; }
+  #sendBtn { width: auto; padding: 12px 20px; margin: 0; }
+</style>
+</head>
+<body>
+
+<div id="loginScreen" class="screen">
+  <h2>🔐 ورود به چت</h2>
+  <input id="nameInput" placeholder="نام شما" />
+  <input id="passInput" type="password" placeholder="رمز ورود مشترک" />
+  <button onclick="login()">ورود</button>
+  <div id="error"></div>
+</div>
+
+<div id="chatScreen" class="hidden">
+  <div id="header">
+    <span>💬 چت خصوصی</span>
+    <button id="logout" onclick="logout()">خروج</button>
+  </div>
+  <div id="messages"></div>
+  <div id="inputArea">
+    <input id="msgInput" placeholder="پیام خود را بنویسید..." onkeydown="if(event.key==='Enter')sendMsg()" />
+    <button id="sendBtn" onclick="sendMsg()">ارسال</button>
+  </div>
+</div>
+
+<script>
+  const BIN_ID = "6b07311cac6210605aa43201";           
+  const MASTER_KEY = "$2a$10$RcebdiO7GmT3yc5epBo.Eua6fNlm3PrnpS4s0CYJtXztgVWU0NWFC"; 
+  const CHAT_PASSWORD = "1234"; 
+
+  const API_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
+
+  const loginScreen = document.getElementById("loginScreen");
+  const chatScreen  = document.getElementById("chatScreen");
+  const messagesEl  = document.getElementById("messages");
+  const errorEl     = document.getElementById("error");
+
+  let myName = "";
+  let lastMessageCount = 0;
+  let intervalId = null;
+
+  window.login = () => {
+    const name = document.getElementById("nameInput").value.trim();
+    const pass = document.getElementById("passInput").value;
+    errorEl.textContent = "";
+
+    if (!name) { errorEl.textContent = "نام را وارد کنید"; return; }
+    if (pass !== CHAT_PASSWORD) { errorEl.textContent = "رمز اشتباه است!"; return; }
+
+    myName = name;
+    loginScreen.classList.add("hidden");
+    chatScreen.classList.remove("hidden");
+
+    fetchMessages(); 
+    intervalId = setInterval(fetchMessages, 3000);
+  };
+
+  window.logout = () => {
+    clearInterval(intervalId);
+    chatScreen.classList.add("hidden");
+    loginScreen.classList.remove("hidden");
+    document.getElementById("passInput").value = "";
+    messagesEl.innerHTML = "";
+    lastMessageCount = 0;
+  };
+
+  async function fetchMessages() {
+    try {
+      const res = await fetch(`${API_URL}/latest`, { headers: { "X-Master-Key": MASTER_KEY } });
+      const data = await res.json();
+      
+      // جادوی این کد: پیدا کردن لیست پیام‌ها فرقی نمیکنه ساختارش چطور باشه
+      let messages = [];
+      if (data.record && data.record.messages) {
+        messages = data.record.messages; // حالت استاندارد
+      } else if (data.record && data.record.data && data.record.data.messages) {
+        messages = data.record.data.messages; // حالت جدید JSONBin
+      }
+
+      if (messages.length !== lastMessageCount) {
+        messagesEl.innerHTML = "";
+        messages.forEach(msg => renderMessage(msg));
+        lastMessageCount = messages.length;
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+    } catch (err) {
+      console.error("خطا در دریافت پیام:", err);
+    }
+  }
+
+  function renderMessage(data) {
+    const div = document.createElement("div");
+    div.className = "msg " + (data.from === myName ? "mine" : "theirs");
+    const nameEl = document.createElement("div");
+    nameEl.className = "sender-name";
+    nameEl.textContent = data.from;
+    const textEl = document.createElement("div");
+    textEl.textContent = data.text;
+    div.appendChild(nameEl);
+    div.appendChild(textEl);
+    messagesEl.appendChild(div);
+  }
+
+  window.sendMsg = async () => {
+    const input = document.getElementById("msgInput");
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = "";
+    
+    try {
+      const res = await fetch(`${API_URL}/latest`, { headers: { "X-Master-Key": MASTER_KEY } });
+      const data = await res.json();
+      
+      let messages = [];
+      let isNewStructure = false;
+      
+      if (data.record && data.record.messages) {
+        messages = data.record.messages;
+      } else if (data.record && data.record.data && data.record.data.messages) {
+        messages = data.record.data.messages;
+        isNewStructure = true;
+      }
+
+      messages.push({ from: myName, text: text });
+
+      // اگر ساختار عوض شده بود، با ساختار جدید ذخیره میکنیم
+      let bodyData = isNewStructure ? { data: { messages: messages } } : { messages: messages };
+
+      const saveRes = await fetch(API_URL, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "X-Master-Key": MASTER_KEY },
+        body: JSON.stringify(bodyData)
+      });
+
+      if (!saveRes.ok) {
+        throw new Error("عدم دسترسی به نوشتن");
+      }
+
+      lastMessageCount = 0; 
+      fetchMessages();
+    } catch (err) {
+      alert("خطا در ارسال پیام! لطفا اینترنت را چک کنید.");
+    }
+  };
+</script>
+</body>
+</html>
